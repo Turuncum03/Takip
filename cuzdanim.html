@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yatırım Takip V8.4.1 (Ana Para Fix)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; padding-bottom: 80px; }
+        .card { background-color: #1e1e1e; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        
+        .total-box { text-align: center; background: linear-gradient(45deg, #3700b3, #6200ea); padding: 15px; border-radius: 15px; margin-bottom: 25px; }
+        .total-row { padding: 5px 0; }
+        .total-divider { border-bottom: 1px solid rgba(255,255,255,0.2); margin: 5px 0; }
+        .total-title { font-size: 13px; opacity: 0.8; margin-bottom: 2px; }
+        .total-amount { font-weight: bold; }
+        .small-total { font-size: 22px; color: #ddd; }
+        .big-total { font-size: 28px; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+
+        .section-title { font-size: 18px; color: #03dac6; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        
+        .result-row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px; }
+        .green { color: #4caf50; }
+        .red { color: #cf6679; }
+        .sub-text { font-size: 13px; color: #777; }
+        
+        .data-display { font-size: 16px; font-weight: bold; color: white; text-align: right; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #aaa; font-size: 12px; }
+        
+        .chart-container { position: relative; height: 260px; margin-bottom: 20px; display: none; }
+        
+        #status-bar {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background-color: #1e1e1e; border-top: 1px solid #333;
+            padding: 10px; text-align: center; font-size: 11px; color: #777; z-index: 999;
+        }
+
+        button.clear-cache-btn { 
+            background-color: #cf6679; color: white; border: none; padding: 12px 24px; border-radius: 8px; 
+            font-weight: bold; cursor: pointer; width: 100%; margin-top: 20px; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="total-box">
+        <div class="total-row">
+            <div class="total-title">ŞU ANKİ VARLIK (Faiz Hariç)</div>
+            <div class="total-amount small-total" id="grandTotalCurrent">---</div>
+        </div>
+        <div class="total-divider"></div>
+        <div class="total-row">
+            <div class="total-title">VADE SONU VARLIK</div>
+            <div class="total-amount big-total" id="grandTotalFuture">---</div>
+        </div>
+    </div>
+
+    <div class="chart-container" id="chartBox">
+        <canvas id="varlikGrafigi"></canvas>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #bb86fc;">
+        <div class="section-title" style="color:#bb86fc">🏦 Mevduat Hesabı</div>
+        <div class="label-row"><span>📅 Başlangıç:</span> <span class="data-display" style="font-size:14px; color:#ddd;" id="mevduatBas">...</span></div>
+        <div class="label-row"><span>🏁 Bitiş Tarihi:</span> <span class="data-display" style="font-size:14px; color:#ddd;" id="mevduatBit">...</span></div>
+        <hr style="border-color:#333; opacity:0.3;">
+        <div class="label-row"><span>Ana Para:</span> <span class="data-display" id="mevduatAnaPara">...</span></div>
+        <div class="label-row"><span>Faiz Oranı:</span> <span class="data-display" id="mevduatFaiz">...</span></div>
+        <div class="label-row"><span>Gün Sayısı:</span> <span class="data-display" id="mevduatGun">...</span></div>
+        <hr style="border-color:#333; opacity:0.3;">
+        <div class="result-row sub-text"><span>Brüt Getiri:</span> <span id="mevduatBrut">...</span></div>
+        <div class="result-row sub-text"><span>Stopaj (%17.5):</span> <span class="red" id="mevduatStopaj">...</span></div>
+        <div class="result-row"><span>Net Getiri:</span> <span class="green" style="font-weight:bold" id="mevduatGetiri">...</span></div>
+        <div class="result-row" style="margin-top:15px; font-size:16px;"><span><b>Vade Sonu Toplam:</b></span> <span style="font-weight:bold" id="mevduatToplam">...</span></div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #03dac6;">
+        <div class="section-title" style="color:#03dac6">📈 Para Piyasası Fonu (PPF)</div>
+        
+        <div class="label-row">
+            <span>Fon Kodu:</span> 
+            <span class="data-display" style="color:#03dac6" id="ppfFonKodu">...</span>
+        </div>
+        <div class="label-row">
+            <span>Pay Adedi:</span> 
+            <span class="data-display" id="ppfAdet">...</span>
+        </div>
+        
+        <hr style="border-color:#333; opacity:0.3;">
+        
+        <div class="label-row">
+            <span>Güncel Fiyat:</span> 
+            <span class="data-display" id="ppfFiyat">...</span>
+        </div>
+        <div class="label-row">
+            <span>Günlük Getiri:</span> 
+            <span class="data-display" style="color:#03dac6" id="ppfYuzde">...</span>
+        </div>
+        
+        <div class="label-row">
+            <span>Mevduat Eşleniği (32G):</span> 
+            <span class="data-display" style="color:#bb86fc; font-style:italic;" id="ppfEslenik">...</span>
+        </div>
+        <div class="label-row">
+            <span>Hesaplanan Gün:</span> 
+            <span class="data-display" style="font-size:12px; color:#777;" id="ppfGunSayisiGoster">...</span>
+        </div>
+        
+        <div class="label-row" style="margin-top:5px;">
+            <span>Ana Para:</span> 
+            <span class="data-display" id="ppfAnaPara">...</span>
+        </div>
+        <div class="label-row">
+            <span>Toplam Değer:</span> 
+            <span class="data-display" style="font-weight:bold" id="ppfGuncel">...</span>
+        </div>
+
+        <hr style="border-color:#333; opacity:0.3;">
+        
+        <div class="result-row sub-text"><span>Ham Kâr:</span> <span id="ppfHamKar">...</span></div>
+        <div class="result-row sub-text"><span>Stopaj (%17.5):</span> <span class="red" id="ppfStopaj">...</span></div>
+        <div class="result-row"><span>Net Getiri:</span> <span class="green" style="font-weight:bold" id="ppfNetGetiri">...</span></div>
+        <div class="result-row" style="margin-top:10px;"><span><b>Net Ele Geçecek:</b></span> <span class="green" style="font-weight:bold" id="ppfNet">...</span></div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #ffd700;">
+        <div class="section-title" style="color:#ffd700">🥇 Altın Varlıklarım</div>
+        <div class="label-row"><span>Gram Altın:</span> <span class="data-display" id="displayGramAdet">...</span></div>
+        <div class="label-row"><span>Çeyrek Altın:</span> <span class="data-display" id="displayCeyrekAdet">...</span></div>
+        <hr style="border-color:#333; opacity:0.3;">
+        <div class="label-row" style="margin-top:10px;"><span>Birim Gram Fiyatı:</span> <span style="color:#ffd700" id="displayBirimFiyat">...</span></div>
+        <div class="label-row"><span>Birim Çeyrek Fiyatı:</span> <span style="color:#ffd700" id="displayCeyrekFiyat">...</span></div>
+        <div class="result-row" style="margin-top:15px;"><span>Toplam Altın Değeri:</span> <span style="font-weight:bold; font-size:16px; color:#ffd700" id="displayAltinToplam">...</span></div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #cf6679;">
+        <div class="section-title" style="color:#cf6679">📊 Hisse Senetleri</div>
+        <div class="label-row"><span>Toplam Maliyet:</span> <span class="data-display" id="hisseMaliyet">...</span></div>
+        <div class="label-row"><span>Güncel Piyasa Değeri:</span> <span class="data-display" id="hisseDeger">...</span></div>
+        <hr style="border-color:#333; opacity:0.3;">
+        <div class="result-row"><span>Net Kâr / Zarar:</span> <span style="font-weight:bold; font-size:16px;" id="hisseKarDurumu">...</span></div>
+    </div>
+
+    <div id="status-bar">Sistem Hazır.</div>
+    <button class="clear-cache-btn" onclick="hafizayiSilVeYenile()">🔄 Veriler Hatalıysa Buraya Bas (Önbelleği Temizle)</button>
+
+    <script>
+        const MY_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQueJNj94CLqPJG2GTGDq9MNqOHrlJA7RQGOMhONe04rScE6tqCDkKKEy729Q6Fka4sDVBtj5EAk7lC/pub?gid=0&single=true&output=csv";
+        const STOPAJ_ORANI = 0.175; 
+        const STORAGE_KEY = "YatirimTakip_V8_4_1"; 
+        
+        let currentData = {
+            mevduatAnaPara: 0, mevduatFaiz: 0, mevduatGun: 0, mevduatBaslangic: "-", mevduatBitis: "-",
+            ppfAnaPara: 0, ppfAdet: 0, ppfFonKodu: "PPF", ppfFiyat: 0, ppfGunlukYuzde: "%0,00", ppfGunSayisi: 1,
+            altinGramAdet: 0, ceyrekAdet: 0, gramFiyat: 0, altinDeger: 0,
+            hisseMaliyet: 0, hisseDeger: 0
+        };
+        
+        let chartInstance = null;
+        try { if (typeof ChartDataLabels !== 'undefined') { Chart.register(ChartDataLabels); } } catch (e) {}
+
+        window.onload = function() {
+            const cached = localStorage.getItem(STORAGE_KEY);
+            if (cached) {
+                try {
+                    const parsed = JSON.parse(cached);
+                    currentData = { ...currentData, ...parsed };
+                    hesaplamalariYap(currentData);
+                    grafigiCiz(currentData);
+                    document.getElementById('chartBox').style.display = 'block';
+                    document.getElementById('status-bar').innerText = "Hafızadaki veriler yüklendi...";
+                } catch (e) { console.log("Hafıza bozuk"); }
+            } else {
+                 hesaplamalariYap(currentData);
+            }
+            baslat();
+        };
+
+        function hafizayiSilVeYenile() {
+            localStorage.removeItem(STORAGE_KEY);
+            document.getElementById('status-bar').innerText = "Önbellek temizlendi, yenileniyor...";
+            location.reload();
+        }
+
+        function formatMoney(amount) {
+            if (isNaN(amount) || amount === null) return "0,00 ₺";
+            return parseFloat(amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
+        }
+
+        async function baslat() {
+            const randomTime = "&t=" + new Date().getTime(); 
+            const gateway = "https://corsproxy.io/?" + encodeURIComponent(MY_SHEET_URL + randomTime);
+            
+            try {
+                await verileriGetir(gateway);
+            } catch (e) {
+                try {
+                    const gateway2 = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(MY_SHEET_URL + randomTime);
+                    await verileriGetir(gateway2);
+                } catch (ex) {
+                    document.getElementById('status-bar').innerText = "Bağlantı kurulamadı. Son veriler gösteriliyor.";
+                }
+            }
+        }
+
+        async function verileriGetir(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("Http Error");
+            const dataText = await response.text();
+            
+            if(dataText.trim().startsWith("<") || dataText.length < 10) throw new Error("HTML Error");
+
+            const rows = dataText.split('\n');
+            let incomingData = {}; 
+            
+            rows.forEach(row => {
+                let cols = row.split(',');
+                if(cols.length >= 2) {
+                    let key = cols[0].replace(/['"\r]+/g, '').trim();
+                    let value = cols[1]; 
+
+                    // --- YENİ EKLENEN ANA PARA DEDEKTİFİ ---
+                    // Eğer anahtar 'ppf' ve 'ana' içeriyorsa (büyük küçük harf farketmeksizin), bunu ppfAnaPara say.
+                    let lowerKey = key.toLowerCase();
+                    if (lowerKey.includes('ppf') && lowerKey.includes('ana')) {
+                        key = "ppfAnaPara"; // İsmi düzelt
+                    }
+
+                    // Fiyat Birleştirme
+                    if (key.includes('ppfFiyat') || key.includes('Fiyat')) {
+                        if (cols.length > 2) {
+                             let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (nextPart.length > 0) value = value + "." + nextPart; 
+                        }
+                    }
+                    else if (key.includes('GunlukYuzde')) {
+                        if (cols.length > 2) {
+                             let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (nextPart.length > 0) value = value + "," + nextPart; 
+                        }
+                    }
+                    else {
+                        if (value && value.startsWith('"') && !value.endsWith('"') && cols.length > 2) value = value + "." + cols[2];
+                        else if (cols.length > 2) {
+                             let nextCol = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (!isNaN(parseFloat(value)) && !isNaN(parseFloat(nextCol)) && nextCol.length <= 2) value = value + "." + nextCol;
+                        }
+                    }
+                    
+                    if(value) {
+                         value = value.replace(/['"\r]+/g, '').trim();
+                         incomingData[key] = value;
+                    }
+                }
+            });
+
+            // --- GÜNCELLEME ---
+            let yeniFiyat = temizleVeSayiYap(incomingData['ppfFiyat']);
+            if (yeniFiyat > 0) {
+                currentData.ppfFiyat = yeniFiyat; 
+            }
+            
+            let yeniYuzde = incomingData['ppfGunlukYuzde'];
+            if (yeniYuzde && !yeniYuzde.includes("Yükleniyor") && !yeniYuzde.includes("Loading") && !yeniYuzde.includes("Hata") && !yeniYuzde.includes("#N/A")) {
+                 currentData.ppfGunlukYuzde = yeniYuzde; 
+            }
+
+            guncelleEgerSayi('ppfAdet', incomingData, currentData);
+            guncelleEgerSayi('ppfGunSayisi', incomingData, currentData);
+            
+            // Ana Para Güncelleme (Dedektif sayesinde yakalanmış olmalı)
+            guncelleEgerSayi('ppfAnaPara', incomingData, currentData);
+            
+            guncelleEgerSayi('mevduatAnaPara', incomingData, currentData);
+            guncelleEgerSayi('mevduatGun', incomingData, currentData);
+            guncelleEgerSayi('mevduatFaiz', incomingData, currentData);
+            guncelleEgerSayi('altinGramAdet', incomingData, currentData);
+            guncelleEgerSayi('ceyrekAdet', incomingData, currentData);
+            guncelleEgerSayi('gramFiyat', incomingData, currentData);
+            guncelleEgerSayi('altinDeger', incomingData, currentData);
+            guncelleEgerSayi('hisseMaliyet', incomingData, currentData);
+            guncelleEgerSayi('hisseDeger', incomingData, currentData);
+            
+            guncelleEgerMetin('ppfFonKodu', incomingData, currentData);
+            guncelleEgerMetin('mevduatBaslangic', incomingData, currentData);
+            guncelleEgerMetin('mevduatBitis', incomingData, currentData);
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
+            
+            document.getElementById('status-bar').innerText = "Veriler güncellendi.";
+            hesaplamalariYap(currentData);
+            grafigiCiz(currentData);
+            document.getElementById('chartBox').style.display = 'block';
+        }
+
+        function guncelleEgerSayi(key, source, target) {
+            let val = temizleVeSayiYap(source[key]);
+            if (!isNaN(val)) {
+                target[key] = val;
+            }
+        }
+        
+        function guncelleEgerMetin(key, source, target) {
+            let val = source[key];
+            if (val && !val.includes("Loading") && !val.includes("#N/A") && !val.includes("Hata")) {
+                target[key] = val;
+            }
+        }
+
+        function temizleVeSayiYap(deger) {
+            if (!deger) return NaN;
+            if (typeof deger === 'number') return deger;
+            if (/[a-zA-Z]/.test(deger.replace("TL","").replace("tl",""))) {
+                return NaN; 
+            }
+            let temiz = deger.toString().replace(/['"\rTLtl₺]+/g, '').trim().replace(',', '.');
+            let sayi = parseFloat(temiz);
+            return sayi;
+        }
+
+        function hesaplamalariYap(data) {
+            const mAna = data.mevduatAnaPara || 0;
+            const mFaiz = data.mevduatFaiz || 0;
+            const mGun = data.mevduatGun || 0;
+            
+            const pAna = data.ppfAnaPara || 0;
+            const pAdet = data.ppfAdet || 0;
+            const pFiyat = data.ppfFiyat || 0;
+            const pGuncel = (pAdet * pFiyat);
+            
+            let pYuzdeStr = data.ppfGunlukYuzde || "%0,00";
+            if (pYuzdeStr.includes("Yükleniyor") || pYuzdeStr.includes("Hata")) pYuzdeStr = "%0,00";
+            
+            let manuelGun = data.ppfGunSayisi || 1;
+            if (manuelGun < 1) manuelGun = 1;
+            
+            let eslenikText = "% 0,00";
+            try {
+                let valYuzde = parseFloat(pYuzdeStr.replace('%','').replace(',','.').trim());
+                if(!isNaN(valYuzde)) {
+                    let gunlukOran = (valYuzde / manuelGun) / 100;
+                    let bilesikGetiri = Math.pow(1 + gunlukOran, 32) - 1;
+                    let eslenik = (bilesikGetiri * 36500) / 32;
+                    eslenikText = "% " + eslenik.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+            } catch(e) {}
+
+            const hDeger = data.hisseDeger || 0;
+            const hMaliyet = data.hisseMaliyet || 0;
+            const gramAdet = data.altinGramAdet || 0;
+            const ceyrekAdet = data.ceyrekAdet || 0;
+            const gramFiyat = data.gramFiyat || 0;
+            const aToplamDeger = data.altinDeger || 0;
+
+            let mBrut = (mAna * mFaiz * mGun) / 36500;
+            let mStopajTutar = mBrut * STOPAJ_ORANI;
+            let mNet = mBrut - mStopajTutar;
+            let mToplam = mAna + mNet;
+
+            let pHamKar = pGuncel - pAna;
+            let pStopajTutar = 0;
+            if (pHamKar > 0) { pStopajTutar = pHamKar * STOPAJ_ORANI; }
+            let pNetKar = pHamKar - pStopajTutar;
+            let pNetEleGecen = pGuncel - pStopajTutar;
+            
+            let ceyrekBirimFiyat = gramFiyat * 1.69;
+            let hKar = hDeger - hMaliyet;
+            let hYuzde = 0;
+            if (hMaliyet > 0) { hYuzde = (hKar / hMaliyet) * 100; }
+
+            document.getElementById('mevduatBas').innerText = data.mevduatBaslangic;
+            document.getElementById('mevduatBit').innerText = data.mevduatBitis;
+            document.getElementById('mevduatAnaPara').innerText = formatMoney(mAna);
+            document.getElementById('mevduatFaiz').innerText = "%" + mFaiz;
+            document.getElementById('mevduatGun').innerText = mGun;
+            document.getElementById('mevduatBrut').innerText = formatMoney(mBrut);
+            document.getElementById('mevduatStopaj').innerText = "-" + formatMoney(mStopajTutar);
+            document.getElementById('mevduatGetiri').innerText = "+" + formatMoney(mNet);
+            document.getElementById('mevduatToplam').innerText = formatMoney(mToplam);
+
+            document.getElementById('ppfFonKodu').innerText = data.ppfFonKodu;
+            document.getElementById('ppfAdet').innerText = pAdet.toLocaleString('tr-TR');
+            document.getElementById('ppfFiyat').innerText = parseFloat(pFiyat).toLocaleString('tr-TR', { minimumFractionDigits: 6, maximumFractionDigits: 6 }) + ' ₺';
+            document.getElementById('ppfYuzde').innerText = pYuzdeStr;
+            document.getElementById('ppfEslenik').innerText = eslenikText;
+            document.getElementById('ppfGunSayisiGoster').innerText = manuelGun + " günlük getiri";
+            document.getElementById('ppfAnaPara').innerText = formatMoney(pAna);
+            document.getElementById('ppfGuncel').innerText = formatMoney(pGuncel);
+            document.getElementById('ppfHamKar').innerText = (pHamKar > 0 ? "+" : "") + formatMoney(pHamKar);
+            document.getElementById('ppfStopaj').innerText = "-" + formatMoney(pStopajTutar);
+            document.getElementById('ppfNetGetiri').innerText = "+" + formatMoney(pNetKar);
+            document.getElementById('ppfNet').innerText = formatMoney(pNetEleGecen);
+
+            document.getElementById('hisseMaliyet').innerText = formatMoney(hMaliyet);
+            document.getElementById('hisseDeger').innerText = formatMoney(hDeger);
+            const karElement = document.getElementById('hisseKarDurumu');
+            const karText = formatMoney(hKar) + " (%" + hYuzde.toFixed(2) + ")";
+            karElement.innerText = (hKar >= 0 ? "+" : "") + karText;
+            if (hKar >= 0) { karElement.className = "green"; } else { karElement.className = "red"; }
+
+            document.getElementById('displayGramAdet').innerText = gramAdet + " Adet";
+            document.getElementById('displayCeyrekAdet').innerText = ceyrekAdet + " Adet";
+            document.getElementById('displayBirimFiyat').innerText = formatMoney(gramFiyat);
+            document.getElementById('displayCeyrekFiyat').innerText = formatMoney(ceyrekBirimFiyat);
+            document.getElementById('displayAltinToplam').innerText = formatMoney(aToplamDeger);
+
+            let grandTotalCurrent = mAna + pNetEleGecen + hDeger + aToplamDeger;
+            document.getElementById('grandTotalCurrent').innerText = formatMoney(grandTotalCurrent);
+            let grandTotalFuture = mToplam + pNetEleGecen + hDeger + aToplamDeger;
+            document.getElementById('grandTotalFuture').innerText = formatMoney(grandTotalFuture);
+            
+            data.mToplam = mToplam;
+            data.pNet = pNetEleGecen;
+            data.hDeger = hDeger;
+            data.aDeger = aToplamDeger;
+        }
+
+        function grafigiCiz(data) {
+            if (typeof Chart === 'undefined') return;
+            const ctx = document.getElementById('varlikGrafigi').getContext('2d');
+            if (chartInstance) { chartInstance.destroy(); }
+            const colors = ['#bb86fc', '#03dac6', '#cf6679', '#ffd700']; 
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
+                data: {
+                    labels: ['Mevduat', 'PPF Fon', 'Hisse', 'Altın'],
+                    datasets: [{
+                        data: [data.mToplam, data.pNet, data.hDeger, data.aDeger],
+                        backgroundColor: colors,
+                        borderColor: '#121212',
+                        borderWidth: 2,
+                        hoverOffset: 15
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: 25 },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#aaa', padding: 20, font: { size: 12 }, usePointStyle: true } },
+                        datalabels: {
+                            color: function(context) { return context.dataset.backgroundColor[context.dataIndex]; },
+                            anchor: 'end',
+                            align: 'end',
+                            offset: 2,
+                            font: { weight: 'bold', size: 14 },
+                            formatter: (value, ctx) => {
+                                let sum = 0;
+                                let dataArr = ctx.chart.data.datasets[0].data;
+                                dataArr.map(data => { sum += data; });
+                                if(sum === 0) return "";
+                                let percentage = (value * 100 / sum).toFixed(1);
+                                if(percentage < 5) return "";
+                                return "%" + percentage;
+                            }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+    </script>
+</body>
+</html>

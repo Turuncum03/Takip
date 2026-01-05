@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yatırım Takip V8.4.1 (Ana Para Fix)</title>
+    <title>Yatırım Takip V8.4.5 (Hisse Fix)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -100,7 +100,12 @@
             <span class="data-display" style="color:#03dac6" id="ppfYuzde">...</span>
         </div>
         
-        <div class="label-row">
+        <div class="label-row" style="margin-top:5px; background-color:rgba(3, 218, 198, 0.1); padding:5px; border-radius:5px;">
+            <span style="color:#03dac6; font-weight:bold;">⚡ Bugünkü Kazanç:</span> 
+            <span class="data-display" style="color:#03dac6; font-weight:bold;" id="ppfGunlukKazanc">...</span>
+        </div>
+        
+        <div class="label-row" style="margin-top:5px;">
             <span>Mevduat Eşleniği (32G):</span> 
             <span class="data-display" style="color:#bb86fc; font-style:italic;" id="ppfEslenik">...</span>
         </div>
@@ -150,7 +155,7 @@
     <script>
         const MY_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQueJNj94CLqPJG2GTGDq9MNqOHrlJA7RQGOMhONe04rScE6tqCDkKKEy729Q6Fka4sDVBtj5EAk7lC/pub?gid=0&single=true&output=csv";
         const STOPAJ_ORANI = 0.175; 
-        const STORAGE_KEY = "YatirimTakip_V8_4_1"; 
+        const STORAGE_KEY = "YatirimTakip_V8_4_5"; 
         
         let currentData = {
             mevduatAnaPara: 0, mevduatFaiz: 0, mevduatGun: 0, mevduatBaslangic: "-", mevduatBitis: "-",
@@ -222,14 +227,11 @@
                     let key = cols[0].replace(/['"\r]+/g, '').trim();
                     let value = cols[1]; 
 
-                    // --- YENİ EKLENEN ANA PARA DEDEKTİFİ ---
-                    // Eğer anahtar 'ppf' ve 'ana' içeriyorsa (büyük küçük harf farketmeksizin), bunu ppfAnaPara say.
                     let lowerKey = key.toLowerCase();
                     if (lowerKey.includes('ppf') && lowerKey.includes('ana')) {
-                        key = "ppfAnaPara"; // İsmi düzelt
+                        key = "ppfAnaPara"; 
                     }
 
-                    // Fiyat Birleştirme
                     if (key.includes('ppfFiyat') || key.includes('Fiyat')) {
                         if (cols.length > 2) {
                              let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
@@ -257,7 +259,6 @@
                 }
             });
 
-            // --- GÜNCELLEME ---
             let yeniFiyat = temizleVeSayiYap(incomingData['ppfFiyat']);
             if (yeniFiyat > 0) {
                 currentData.ppfFiyat = yeniFiyat; 
@@ -270,10 +271,7 @@
 
             guncelleEgerSayi('ppfAdet', incomingData, currentData);
             guncelleEgerSayi('ppfGunSayisi', incomingData, currentData);
-            
-            // Ana Para Güncelleme (Dedektif sayesinde yakalanmış olmalı)
             guncelleEgerSayi('ppfAnaPara', incomingData, currentData);
-            
             guncelleEgerSayi('mevduatAnaPara', incomingData, currentData);
             guncelleEgerSayi('mevduatGun', incomingData, currentData);
             guncelleEgerSayi('mevduatFaiz', incomingData, currentData);
@@ -338,9 +336,13 @@
             if (manuelGun < 1) manuelGun = 1;
             
             let eslenikText = "% 0,00";
+            let gunlukKazancTL = 0;
+
             try {
                 let valYuzde = parseFloat(pYuzdeStr.replace('%','').replace(',','.').trim());
                 if(!isNaN(valYuzde)) {
+                    gunlukKazancTL = (pGuncel * valYuzde) / (100 + valYuzde);
+
                     let gunlukOran = (valYuzde / manuelGun) / 100;
                     let bilesikGetiri = Math.pow(1 + gunlukOran, 32) - 1;
                     let eslenik = (bilesikGetiri * 36500) / 32;
@@ -384,7 +386,14 @@
             document.getElementById('ppfFonKodu').innerText = data.ppfFonKodu;
             document.getElementById('ppfAdet').innerText = pAdet.toLocaleString('tr-TR');
             document.getElementById('ppfFiyat').innerText = parseFloat(pFiyat).toLocaleString('tr-TR', { minimumFractionDigits: 6, maximumFractionDigits: 6 }) + ' ₺';
-            document.getElementById('ppfYuzde').innerText = pYuzdeStr;
+            
+            let gosterilecekYuzde = pYuzdeStr;
+            if (!gosterilecekYuzde.trim().startsWith('%')) {
+                gosterilecekYuzde = "% " + gosterilecekYuzde;
+            }
+            document.getElementById('ppfYuzde').innerText = gosterilecekYuzde;
+            
+            document.getElementById('ppfGunlukKazanc').innerText = "+" + formatMoney(gunlukKazancTL);
             document.getElementById('ppfEslenik').innerText = eslenikText;
             document.getElementById('ppfGunSayisiGoster').innerText = manuelGun + " günlük getiri";
             document.getElementById('ppfAnaPara').innerText = formatMoney(pAna);
@@ -395,7 +404,11 @@
             document.getElementById('ppfNet').innerText = formatMoney(pNetEleGecen);
 
             document.getElementById('hisseMaliyet').innerText = formatMoney(hMaliyet);
-            document.getElementById('hisseDeger').innerText = formatMoney(hDeger);
+            
+            // --- DÜZELTİLEN YER BURASI ---
+            document.getElementById('hisseDeger').innerText = formatMoney(hDeger); 
+            // ------------------------------
+            
             const karElement = document.getElementById('hisseKarDurumu');
             const karText = formatMoney(hKar) + " (%" + hYuzde.toFixed(2) + ")";
             karElement.innerText = (hKar >= 0 ? "+" : "") + karText;

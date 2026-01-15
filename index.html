@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yatırım Takip V8.4.5 (Hisse Fix)</title>
+    <title>Yatırım Takip V8.5 (AltınS1 Eklendi)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -135,9 +135,14 @@
         <div class="section-title" style="color:#ffd700">🥇 Altın Varlıklarım</div>
         <div class="label-row"><span>Gram Altın:</span> <span class="data-display" id="displayGramAdet">...</span></div>
         <div class="label-row"><span>Çeyrek Altın:</span> <span class="data-display" id="displayCeyrekAdet">...</span></div>
+        <div class="label-row"><span>Darphane (S1):</span> <span class="data-display" id="displayS1Adet">...</span></div>
+        
         <hr style="border-color:#333; opacity:0.3;">
+        
         <div class="label-row" style="margin-top:10px;"><span>Birim Gram Fiyatı:</span> <span style="color:#ffd700" id="displayBirimFiyat">...</span></div>
         <div class="label-row"><span>Birim Çeyrek Fiyatı:</span> <span style="color:#ffd700" id="displayCeyrekFiyat">...</span></div>
+        <div class="label-row"><span>Birim S1 Fiyatı:</span> <span style="color:#ffd700" id="displayS1Fiyat">...</span></div>
+
         <div class="result-row" style="margin-top:15px;"><span>Toplam Altın Değeri:</span> <span style="font-weight:bold; font-size:16px; color:#ffd700" id="displayAltinToplam">...</span></div>
     </div>
 
@@ -155,12 +160,13 @@
     <script>
         const MY_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQueJNj94CLqPJG2GTGDq9MNqOHrlJA7RQGOMhONe04rScE6tqCDkKKEy729Q6Fka4sDVBtj5EAk7lC/pub?gid=0&single=true&output=csv";
         const STOPAJ_ORANI = 0.175; 
-        const STORAGE_KEY = "YatirimTakip_V8_4_5"; 
+        const STORAGE_KEY = "YatirimTakip_V8_5"; // Sürüm anahtarı güncellendi
         
         let currentData = {
             mevduatAnaPara: 0, mevduatFaiz: 0, mevduatGun: 0, mevduatBaslangic: "-", mevduatBitis: "-",
             ppfAnaPara: 0, ppfAdet: 0, ppfFonKodu: "PPF", ppfFiyat: 0, ppfGunlukYuzde: "%0,00", ppfGunSayisi: 1,
             altinGramAdet: 0, ceyrekAdet: 0, gramFiyat: 0, altinDeger: 0,
+            altins1Adet: 0, altins1Fiyat: 0, // YENİ VERİLER
             hisseMaliyet: 0, hisseDeger: 0
         };
         
@@ -279,6 +285,10 @@
             guncelleEgerSayi('ceyrekAdet', incomingData, currentData);
             guncelleEgerSayi('gramFiyat', incomingData, currentData);
             guncelleEgerSayi('altinDeger', incomingData, currentData);
+            // AltınS1 Verilerini Güncelle
+            guncelleEgerSayi('altins1Adet', incomingData, currentData);
+            guncelleEgerSayi('altins1Fiyat', incomingData, currentData);
+            // --------------------------
             guncelleEgerSayi('hisseMaliyet', incomingData, currentData);
             guncelleEgerSayi('hisseDeger', incomingData, currentData);
             
@@ -355,7 +365,19 @@
             const gramAdet = data.altinGramAdet || 0;
             const ceyrekAdet = data.ceyrekAdet || 0;
             const gramFiyat = data.gramFiyat || 0;
-            const aToplamDeger = data.altinDeger || 0;
+            
+            // --- ALTIN HESAPLAMALARI (GÜNCELLENDİ) ---
+            const s1Adet = data.altins1Adet || 0;
+            const s1Fiyat = data.altins1Fiyat || 0;
+            const s1Total = s1Adet * s1Fiyat;
+            
+            let ceyrekBirimFiyat = gramFiyat * 1.69;
+            const gramTotal = gramAdet * gramFiyat;
+            const ceyrekTotal = ceyrekAdet * ceyrekBirimFiyat;
+            
+            // Toplam Altın Değeri: Gram + Çeyrek + S1
+            const aToplamDeger = gramTotal + ceyrekTotal + s1Total;
+            // ------------------------------------------
 
             let mBrut = (mAna * mFaiz * mGun) / 36500;
             let mStopajTutar = mBrut * STOPAJ_ORANI;
@@ -368,7 +390,6 @@
             let pNetKar = pHamKar - pStopajTutar;
             let pNetEleGecen = pGuncel - pStopajTutar;
             
-            let ceyrekBirimFiyat = gramFiyat * 1.69;
             let hKar = hDeger - hMaliyet;
             let hYuzde = 0;
             if (hMaliyet > 0) { hYuzde = (hKar / hMaliyet) * 100; }
@@ -404,10 +425,7 @@
             document.getElementById('ppfNet').innerText = formatMoney(pNetEleGecen);
 
             document.getElementById('hisseMaliyet').innerText = formatMoney(hMaliyet);
-            
-            // --- DÜZELTİLEN YER BURASI ---
             document.getElementById('hisseDeger').innerText = formatMoney(hDeger); 
-            // ------------------------------
             
             const karElement = document.getElementById('hisseKarDurumu');
             const karText = formatMoney(hKar) + " (%" + hYuzde.toFixed(2) + ")";
@@ -416,8 +434,14 @@
 
             document.getElementById('displayGramAdet').innerText = gramAdet + " Adet";
             document.getElementById('displayCeyrekAdet').innerText = ceyrekAdet + " Adet";
+            // YENİ EKRAN VERİLERİ
+            document.getElementById('displayS1Adet').innerText = s1Adet + " Adet";
+            // -------------------
             document.getElementById('displayBirimFiyat').innerText = formatMoney(gramFiyat);
             document.getElementById('displayCeyrekFiyat').innerText = formatMoney(ceyrekBirimFiyat);
+            // YENİ EKRAN VERİLERİ
+            document.getElementById('displayS1Fiyat').innerText = formatMoney(s1Fiyat);
+            // -------------------
             document.getElementById('displayAltinToplam').innerText = formatMoney(aToplamDeger);
 
             let grandTotalCurrent = mAna + pNetEleGecen + hDeger + aToplamDeger;

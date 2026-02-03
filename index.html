@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yatırım Takip V8.6.1 (PPF Fix)</title>
+    <title>Yatırım Takip V8.6.2 (Sayı Formatı Fix)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -160,7 +161,7 @@
     <script>
         const MY_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQueJNj94CLqPJG2GTGDq9MNqOHrlJA7RQGOMhONe04rScE6tqCDkKKEy729Q6Fka4sDVBtj5EAk7lC/pub?gid=0&single=true&output=csv";
         const STOPAJ_ORANI = 0.175; 
-        const STORAGE_KEY = "YatirimTakip_V8_6_1"; // Sürüm V8.6.1
+        const STORAGE_KEY = "YatirimTakip_V8_6_2"; // Sürüm V8.6.2 (Fix)
         
         let currentData = {
             mevduatAnaPara: 0, mevduatFaiz: 0, mevduatGun: 0, mevduatBaslangic: "-", mevduatBitis: "-",
@@ -231,7 +232,7 @@
                 return;
             } catch (ex) {
                 console.log("Yedek sunucu da yanıt vermedi.");
-                document.getElementById('status-bar').innerText = "Bağlantı zayıf. Son veriler gösteriliyor. (3 sn sonra tekrar denenecek)";
+                document.getElementById('status-bar').innerText = "Bağlantı zayıf. Son veriler gösteriliyor (Otomatik tekrar denenecek).";
                 setTimeout(() => baslat(), 3000); 
             }
         }
@@ -246,59 +247,56 @@
             const rows = dataText.split('\n');
             let incomingData = {}; 
             
-            // --- VERİ DEDEKTİFİ (Key Eşleştirme İyileştirildi) ---
             rows.forEach(row => {
                 let cols = row.split(',');
                 if(cols.length >= 2) {
                     let key = cols[0].replace(/['"\r]+/g, '').trim();
                     let value = cols[1]; 
 
-                    // Key temizliği (Boşlukları ve büyük/küçük harfi yok say)
-                    let cleanKey = key.toLowerCase().replace(/\s/g, '');
+                    let lowerKey = key.toLowerCase();
+                    if (lowerKey.includes('ppf') && lowerKey.includes('ana')) {
+                        key = "ppfAnaPara"; 
+                    }
 
-                    // Özel Eşleştirmeler
-                    if (cleanKey.includes('ppf') && cleanKey.includes('ana')) { key = "ppfAnaPara"; }
-                    else if (cleanKey.includes('ppf') && cleanKey.includes('adet')) { key = "ppfAdet"; } // Yeni Eklendi
-                    else if (cleanKey.includes('ppf') && cleanKey.includes('fiyat')) { key = "ppfFiyat"; }
-                    else if (cleanKey.includes('gunluk') && cleanKey.includes('yuzde')) { key = "ppfGunlukYuzde"; }
-
-                    // Değer Birleştirme (Virgül/Nokta hatalarına karşı)
-                    if (value && value.startsWith('"') && !value.endsWith('"') && cols.length > 2) {
-                         value = value + "." + cols[2]; // Parçalanmış sayıyı birleştir
-                    } else if (cols.length > 2) {
-                         let nextCol = cols[2].replace(/['"\r]+/g, '').trim();
-                         // Eğer yan sütunda kuruş varsa (örn: 123, 45) birleştir
-                         if (!isNaN(parseFloat(value)) && !isNaN(parseFloat(nextCol)) && nextCol.length <= 2) {
-                             value = value + "." + nextCol;
-                         }
+                    if (key.includes('ppfFiyat') || key.includes('Fiyat')) {
+                        if (cols.length > 2) {
+                             let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (nextPart.length > 0) value = value + "." + nextPart; 
+                        }
+                    }
+                    else if (key.includes('GunlukYuzde')) {
+                        if (cols.length > 2) {
+                             let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (nextPart.length > 0) value = value + "," + nextPart; 
+                        }
+                    }
+                    else {
+                        if (value && value.startsWith('"') && !value.endsWith('"') && cols.length > 2) value = value + "." + cols[2];
+                        else if (cols.length > 2) {
+                             let nextCol = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (!isNaN(parseFloat(value)) && !isNaN(parseFloat(nextCol)) && nextCol.length <= 2) value = value + "." + nextCol;
+                        }
                     }
                     
                     if(value) {
                          value = value.replace(/['"\r]+/g, '').trim();
                          incomingData[key] = value;
-                         // Yedek olarak temizlenmiş key ile de kaydet
-                         incomingData[cleanKey] = value;
                     }
                 }
             });
 
-            // --- GÜNCELLEMELER (Daha güvenli okuma) ---
+            // GÜNCELLEMELER
+            let yeniFiyat = temizleVeSayiYap(incomingData['ppfFiyat']);
+            if (yeniFiyat > 0) {
+                currentData.ppfFiyat = yeniFiyat; 
+            }
             
-            // PPF Fiyat (Önce normal, bulamazsa temiz key ile dene)
-            let rawFiyat = incomingData['ppfFiyat'] || incomingData['ppffiyat'];
-            let yeniFiyat = temizleVeSayiYap(rawFiyat);
-            if (yeniFiyat > 0) { currentData.ppfFiyat = yeniFiyat; }
-            
-            let rawYuzde = incomingData['ppfGunlukYuzde'] || incomingData['ppfgunlukyuzde'];
-            if (rawYuzde && !rawYuzde.includes("Yükleniyor") && !rawYuzde.includes("Hata")) {
-                 currentData.ppfGunlukYuzde = rawYuzde; 
+            let yeniYuzde = incomingData['ppfGunlukYuzde'];
+            if (yeniYuzde && !yeniYuzde.includes("Yükleniyor") && !yeniYuzde.includes("Loading") && !yeniYuzde.includes("Hata") && !yeniYuzde.includes("#N/A")) {
+                 currentData.ppfGunlukYuzde = yeniYuzde; 
             }
 
-            // PPF Adet (Kritik Düzeltme)
-            let rawAdet = incomingData['ppfAdet'] || incomingData['ppfadet'];
-            let yeniAdet = temizleVeSayiYap(rawAdet);
-            if (!isNaN(yeniAdet) && yeniAdet > 0) { currentData.ppfAdet = yeniAdet; }
-
+            guncelleEgerSayi('ppfAdet', incomingData, currentData);
             guncelleEgerSayi('ppfGunSayisi', incomingData, currentData);
             guncelleEgerSayi('ppfAnaPara', incomingData, currentData);
             guncelleEgerSayi('mevduatAnaPara', incomingData, currentData);
@@ -327,7 +325,9 @@
 
         function guncelleEgerSayi(key, source, target) {
             let val = temizleVeSayiYap(source[key]);
-            if (!isNaN(val)) { target[key] = val; }
+            if (!isNaN(val)) {
+                target[key] = val;
+            }
         }
         
         function guncelleEgerMetin(key, source, target) {
@@ -337,42 +337,28 @@
             }
         }
 
-        // --- GELİŞMİŞ SAYI TEMİZLEYİCİ (Binlik Ayracı Fix) ---
+        // --- BU KISIM DÜZELTİLDİ: ESKİ SAĞLAM MANTIK ---
         function temizleVeSayiYap(deger) {
             if (!deger) return NaN;
             if (typeof deger === 'number') return deger;
-            // İçinde harf varsa sayı değildir (örn: "Loading")
-            if (/[a-zA-Z]/.test(deger.replace("TL","").replace("tl",""))) { return NaN; }
+            // Harf kontrolü
+            if (/[a-zA-Z]/.test(deger.replace("TL","").replace("tl",""))) {
+                return NaN; 
+            }
             
             let temiz = deger.toString().replace(/['"\rTLtl₺]+/g, '').trim();
             
-            // Eğer virgül varsa, bu bir Türkçe ondalık ayracıdır (Örn: 10.000,50 veya 0,30)
+            // Eğer virgül varsa (Türkçe format: 10.000,50 veya 0,30)
             if (temiz.includes(',')) {
-                // Noktaları (binlik ayracı) sil
+                // Binlik ayracı olan noktayı sil
                 temiz = temiz.replace(/\./g, '');
-                // Virgülü noktaya çevir (JS formatı)
+                // Virgülü noktaya çevir (Programın anlaması için)
                 temiz = temiz.replace(',', '.');
             } 
-            // Eğer virgül yok ama nokta varsa (Örn: 10.000) ve birden fazla nokta yoksa
-            // Bu büyük ihtimalle binlik ayracıdır (Google Sheet CSV formatı bazen böyledir)
-            // Ama 0.30 gibi bir fiyatsa, nokta kalmalı. Bunu anlamak zor, o yüzden:
-            // Google Sheet'ten gelen veride genellikle binlik ayracı nokta olur.
-            // Ancak JS parseFloat("10.000") işlemini 10 olarak görür.
-            else if (temiz.includes('.')) {
-                // Eğer nokta sayısı 1 ise ve sayı 1000'den küçük görünüyorsa (örn 0.30) dokunma.
-                // Ama adet genelde büyük olur.
-                // En güvenli yöntem: Sayıyı olduğu gibi parse et, eğer saçma duruyorsa (10 adet gibi) düşün.
-                // Şimdilik standart TR format varsayımı (Noktayı Sil):
-                // DİKKAT: PPF Fiyatı (0.3050) nokta ile gelebilir. Adet (10.000) nokta ile gelebilir.
-                // Fiyat genelde 1'den küçüktür (0.xx). Adet genelde büyüktür.
-                let tempVal = parseFloat(temiz);
-                // Eğer nokta var ve sayı < 100 ise bu muhtemelen ondalıktır (Fiyat), dokunma.
-                // Eğer sayı > 100 ise bu binlik ayracı olabilir (Adet), noktayı sil.
-                if (tempVal > 100) {
-                     temiz = temiz.replace(/\./g, '');
-                }
-            }
-
+            // Eğer virgül yoksa (Düz sayı: 10000 veya 24.50 gibi US format)
+            // BURASI DÜZELTİLDİ: Noktayı silme!
+            // 24.50 -> 24.50 olarak kalmalı.
+            
             let sayi = parseFloat(temiz);
             return sayi;
         }
@@ -385,8 +371,6 @@
             const pAna = data.ppfAnaPara || 0;
             const pAdet = data.ppfAdet || 0;
             const pFiyat = data.ppfFiyat || 0;
-            
-            // Eğer Fiyat veya Adet 0 ise güncelleme henüz tam olmamıştır, eskisini koru veya 0 göster
             const pGuncel = (pAdet * pFiyat);
             
             let pYuzdeStr = data.ppfGunlukYuzde || "%0,00";

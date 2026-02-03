@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yatırım Takip V8.5 (AltınS1 Eklendi)</title>
+    <title>Yatırım Takip V8.6 (Final Auto-Retry)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -160,13 +160,13 @@
     <script>
         const MY_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQueJNj94CLqPJG2GTGDq9MNqOHrlJA7RQGOMhONe04rScE6tqCDkKKEy729Q6Fka4sDVBtj5EAk7lC/pub?gid=0&single=true&output=csv";
         const STOPAJ_ORANI = 0.175; 
-        const STORAGE_KEY = "YatirimTakip_V8_5"; // Sürüm anahtarı güncellendi
+        const STORAGE_KEY = "YatirimTakip_V8_6"; // Sürüm V8.6
         
         let currentData = {
             mevduatAnaPara: 0, mevduatFaiz: 0, mevduatGun: 0, mevduatBaslangic: "-", mevduatBitis: "-",
             ppfAnaPara: 0, ppfAdet: 0, ppfFonKodu: "PPF", ppfFiyat: 0, ppfGunlukYuzde: "%0,00", ppfGunSayisi: 1,
             altinGramAdet: 0, ceyrekAdet: 0, gramFiyat: 0, altinDeger: 0,
-            altins1Adet: 0, altins1Fiyat: 0, // YENİ VERİLER
+            altins1Adet: 0, altins1Fiyat: 0, 
             hisseMaliyet: 0, hisseDeger: 0
         };
         
@@ -182,7 +182,7 @@
                     hesaplamalariYap(currentData);
                     grafigiCiz(currentData);
                     document.getElementById('chartBox').style.display = 'block';
-                    document.getElementById('status-bar').innerText = "Hafızadaki veriler yüklendi...";
+                    document.getElementById('status-bar').innerText = "Hafıza yüklendi. Güncel veri bekleniyor...";
                 } catch (e) { console.log("Hafıza bozuk"); }
             } else {
                  hesaplamalariYap(currentData);
@@ -201,24 +201,50 @@
             return parseFloat(amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
         }
 
+        // --- İNATÇI BAĞLANTI (AUTO-RETRY) SİSTEMİ ---
         async function baslat() {
             const randomTime = "&t=" + new Date().getTime(); 
-            const gateway = "https://corsproxy.io/?" + encodeURIComponent(MY_SHEET_URL + randomTime);
             
+            // 1. Deneme: CorsProxy
             try {
-                await verileriGetir(gateway);
+                document.getElementById('status-bar').innerText = "Sunucuya bağlanılıyor (Deneme 1)...";
+                const url1 = "https://corsproxy.io/?" + encodeURIComponent(MY_SHEET_URL + randomTime);
+                await verileriGetir(url1);
+                return; // Başarılıysa çık
             } catch (e) {
-                try {
-                    const gateway2 = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(MY_SHEET_URL + randomTime);
-                    await verileriGetir(gateway2);
-                } catch (ex) {
-                    document.getElementById('status-bar').innerText = "Bağlantı kurulamadı. Son veriler gösteriliyor.";
-                }
+                console.log("Sunucu 1 Hatası. 1 sn bekleniyor...");
+                await new Promise(r => setTimeout(r, 1000)); // 1 saniye bekle
+            }
+
+            // 2. Deneme: CorsProxy (Tekrar)
+            try {
+                document.getElementById('status-bar').innerText = "Sunucu tekrar deneniyor (Deneme 2)...";
+                const url1_retry = "https://corsproxy.io/?" + encodeURIComponent(MY_SHEET_URL + randomTime + "&r=2");
+                await verileriGetir(url1_retry);
+                return;
+            } catch (e) {
+                console.log("Sunucu 1 Tekrar Hatası. Yedek sunucuya geçiliyor...");
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
+            // 3. Deneme: CodeTabs (Yedek)
+            try {
+                document.getElementById('status-bar').innerText = "Yedek sunucu deneniyor...";
+                const url2 = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(MY_SHEET_URL + randomTime);
+                await verileriGetir(url2);
+                return;
+            } catch (ex) {
+                console.log("Yedek sunucu da yanıt vermedi.");
+                document.getElementById('status-bar').innerText = "Bağlantı zayıf. Son veriler gösteriliyor. (3 sn sonra tekrar denenecek)";
+                
+                // 4. Deneme (Sonsuz Döngü - Vazgeçmek yok): 3 saniye sonra fonksiyonu baştan başlat
+                setTimeout(() => baslat(), 3000); 
             }
         }
 
         async function verileriGetir(url) {
-            const response = await fetch(url);
+            // DİKKAT: cache: 'no-store' telefonda "git internetten çek" demektir.
+            const response = await fetch(url, { cache: "no-store" });
             if (!response.ok) throw new Error("Http Error");
             const dataText = await response.text();
             
@@ -285,10 +311,8 @@
             guncelleEgerSayi('ceyrekAdet', incomingData, currentData);
             guncelleEgerSayi('gramFiyat', incomingData, currentData);
             guncelleEgerSayi('altinDeger', incomingData, currentData);
-            // AltınS1 Verilerini Güncelle
             guncelleEgerSayi('altins1Adet', incomingData, currentData);
             guncelleEgerSayi('altins1Fiyat', incomingData, currentData);
-            // --------------------------
             guncelleEgerSayi('hisseMaliyet', incomingData, currentData);
             guncelleEgerSayi('hisseDeger', incomingData, currentData);
             
@@ -298,7 +322,7 @@
 
             localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
             
-            document.getElementById('status-bar').innerText = "Veriler güncellendi.";
+            document.getElementById('status-bar').innerText = "Veriler Başarıyla Güncellendi! ✅";
             hesaplamalariYap(currentData);
             grafigiCiz(currentData);
             document.getElementById('chartBox').style.display = 'block';
@@ -366,7 +390,6 @@
             const ceyrekAdet = data.ceyrekAdet || 0;
             const gramFiyat = data.gramFiyat || 0;
             
-            // --- ALTIN HESAPLAMALARI (GÜNCELLENDİ) ---
             const s1Adet = data.altins1Adet || 0;
             const s1Fiyat = data.altins1Fiyat || 0;
             const s1Total = s1Adet * s1Fiyat;
@@ -375,9 +398,7 @@
             const gramTotal = gramAdet * gramFiyat;
             const ceyrekTotal = ceyrekAdet * ceyrekBirimFiyat;
             
-            // Toplam Altın Değeri: Gram + Çeyrek + S1
             const aToplamDeger = gramTotal + ceyrekTotal + s1Total;
-            // ------------------------------------------
 
             let mBrut = (mAna * mFaiz * mGun) / 36500;
             let mStopajTutar = mBrut * STOPAJ_ORANI;
@@ -434,14 +455,10 @@
 
             document.getElementById('displayGramAdet').innerText = gramAdet + " Adet";
             document.getElementById('displayCeyrekAdet').innerText = ceyrekAdet + " Adet";
-            // YENİ EKRAN VERİLERİ
             document.getElementById('displayS1Adet').innerText = s1Adet + " Adet";
-            // -------------------
             document.getElementById('displayBirimFiyat').innerText = formatMoney(gramFiyat);
             document.getElementById('displayCeyrekFiyat').innerText = formatMoney(ceyrekBirimFiyat);
-            // YENİ EKRAN VERİLERİ
             document.getElementById('displayS1Fiyat').innerText = formatMoney(s1Fiyat);
-            // -------------------
             document.getElementById('displayAltinToplam').innerText = formatMoney(aToplamDeger);
 
             let grandTotalCurrent = mAna + pNetEleGecen + hDeger + aToplamDeger;

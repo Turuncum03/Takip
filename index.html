@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yatırım Takip V8.6.2 (Sayı Formatı Fix)</title>
+    <title>Yatırım Takip V8.9.1 (Hızlı Geçiş Fix)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -64,7 +63,7 @@
     </div>
 
     <div class="card" style="border-left: 4px solid #bb86fc;">
-        <div class="section-title" style="color:#bb86fc">🏦 Mevduat Hesabı</div>
+        <div class="section-title" style="color:#bb86fc">🏦 1. Mevduat Hesabı</div>
         <div class="label-row"><span>📅 Başlangıç:</span> <span class="data-display" style="font-size:14px; color:#ddd;" id="mevduatBas">...</span></div>
         <div class="label-row"><span>🏁 Bitiş Tarihi:</span> <span class="data-display" style="font-size:14px; color:#ddd;" id="mevduatBit">...</span></div>
         <hr style="border-color:#333; opacity:0.3;">
@@ -76,6 +75,21 @@
         <div class="result-row sub-text"><span>Stopaj (%17.5):</span> <span class="red" id="mevduatStopaj">...</span></div>
         <div class="result-row"><span>Net Getiri:</span> <span class="green" style="font-weight:bold" id="mevduatGetiri">...</span></div>
         <div class="result-row" style="margin-top:15px; font-size:16px;"><span><b>Vade Sonu Toplam:</b></span> <span style="font-weight:bold" id="mevduatToplam">...</span></div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #9c27b0;">
+        <div class="section-title" style="color:#9c27b0">🏦 2. Mevduat Hesabı</div>
+        <div class="label-row"><span>📅 Başlangıç:</span> <span class="data-display" style="font-size:14px; color:#ddd;" id="mevduat2Bas">...</span></div>
+        <div class="label-row"><span>🏁 Bitiş Tarihi:</span> <span class="data-display" style="font-size:14px; color:#ddd;" id="mevduat2Bit">...</span></div>
+        <hr style="border-color:#333; opacity:0.3;">
+        <div class="label-row"><span>Ana Para:</span> <span class="data-display" id="mevduat2AnaPara">...</span></div>
+        <div class="label-row"><span>Faiz Oranı:</span> <span class="data-display" id="mevduat2Faiz">...</span></div>
+        <div class="label-row"><span>Gün Sayısı:</span> <span class="data-display" id="mevduat2Gun">...</span></div>
+        <hr style="border-color:#333; opacity:0.3;">
+        <div class="result-row sub-text"><span>Brüt Getiri:</span> <span id="mevduat2Brut">...</span></div>
+        <div class="result-row sub-text"><span>Stopaj (%17.5):</span> <span class="red" id="mevduat2Stopaj">...</span></div>
+        <div class="result-row"><span>Net Getiri:</span> <span class="green" style="font-weight:bold" id="mevduat2Getiri">...</span></div>
+        <div class="result-row" style="margin-top:15px; font-size:16px;"><span><b>Vade Sonu Toplam:</b></span> <span style="font-weight:bold" id="mevduat2Toplam">...</span></div>
     </div>
 
     <div class="card" style="border-left: 4px solid #03dac6;">
@@ -161,10 +175,11 @@
     <script>
         const MY_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQueJNj94CLqPJG2GTGDq9MNqOHrlJA7RQGOMhONe04rScE6tqCDkKKEy729Q6Fka4sDVBtj5EAk7lC/pub?gid=0&single=true&output=csv";
         const STOPAJ_ORANI = 0.175; 
-        const STORAGE_KEY = "YatirimTakip_V8_6_2"; // Sürüm V8.6.2 (Fix)
+        const STORAGE_KEY = "YatirimTakip_V8_9_1"; 
         
         let currentData = {
             mevduatAnaPara: 0, mevduatFaiz: 0, mevduatGun: 0, mevduatBaslangic: "-", mevduatBitis: "-",
+            mevduat2AnaPara: 0, mevduat2Faiz: 0, mevduat2Gun: 0, mevduat2Baslangic: "-", mevduat2Bitis: "-",
             ppfAnaPara: 0, ppfAdet: 0, ppfFonKodu: "PPF", ppfFiyat: 0, ppfGunlukYuzde: "%0,00", ppfGunSayisi: 1,
             altinGramAdet: 0, ceyrekAdet: 0, gramFiyat: 0, altinDeger: 0,
             altins1Adet: 0, altins1Fiyat: 0, 
@@ -203,124 +218,134 @@
         }
 
         async function baslat() {
-            const randomTime = "&t=" + new Date().getTime(); 
-            
-            try {
-                document.getElementById('status-bar').innerText = "Sunucuya bağlanılıyor (Deneme 1)...";
-                const url1 = "https://corsproxy.io/?" + encodeURIComponent(MY_SHEET_URL + randomTime);
-                await verileriGetir(url1);
-                return; 
-            } catch (e) {
-                console.log("Sunucu 1 Hatası. 1 sn bekleniyor...");
-                await new Promise(r => setTimeout(r, 1000));
+            const randomTime = "&nocache=" + new Date().getTime(); 
+            const targetUrl = encodeURIComponent(MY_SHEET_URL + randomTime);
+
+            // Sunucuları hıza göre dizdik
+            const proxies = [
+                "https://corsproxy.io/?",
+                "https://api.codetabs.com/v1/proxy?quest=",
+                "https://api.allorigins.win/raw?url="
+            ];
+
+            for (let i = 0; i < proxies.length; i++) {
+                try {
+                    document.getElementById('status-bar').innerText = `Sunucu aranıyor (Hat ${i+1})...`;
+                    await verileriGetir(proxies[i] + targetUrl);
+                    return; 
+                } catch (e) {
+                    console.log(`Hat ${i+1} başarısız veya çok yavaş. Diğerine geçiliyor...`);
+                    // Beklemeden direkt diğerine geçer (Hata aldıysa)
+                }
             }
 
-            try {
-                document.getElementById('status-bar').innerText = "Sunucu tekrar deneniyor (Deneme 2)...";
-                const url1_retry = "https://corsproxy.io/?" + encodeURIComponent(MY_SHEET_URL + randomTime + "&r=2");
-                await verileriGetir(url1_retry);
-                return;
-            } catch (e) {
-                console.log("Sunucu 1 Tekrar Hatası. Yedek sunucuya geçiliyor...");
-                await new Promise(r => setTimeout(r, 1000));
-            }
-
-            try {
-                document.getElementById('status-bar').innerText = "Yedek sunucu deneniyor...";
-                const url2 = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(MY_SHEET_URL + randomTime);
-                await verileriGetir(url2);
-                return;
-            } catch (ex) {
-                console.log("Yedek sunucu da yanıt vermedi.");
-                document.getElementById('status-bar').innerText = "Bağlantı zayıf. Son veriler gösteriliyor (Otomatik tekrar denenecek).";
-                setTimeout(() => baslat(), 3000); 
-            }
+            document.getElementById('status-bar').innerText = "Ağ yoğun. Son veriler gösteriliyor (5 sn sonra tekrar denenecek).";
+            setTimeout(() => baslat(), 5000); 
         }
 
+        // --- ZAMAN AŞIMI (TIMEOUT) EKLENMİŞ VERİ ÇEKME MOTORU ---
         async function verileriGetir(url) {
-            const response = await fetch(url, { cache: "no-store" });
-            if (!response.ok) throw new Error("Http Error");
-            const dataText = await response.text();
-            
-            if(dataText.trim().startsWith("<") || dataText.length < 10) throw new Error("HTML Error");
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 saniye süre tanıdık!
 
-            const rows = dataText.split('\n');
-            let incomingData = {}; 
-            
-            rows.forEach(row => {
-                let cols = row.split(',');
-                if(cols.length >= 2) {
-                    let key = cols[0].replace(/['"\r]+/g, '').trim();
-                    let value = cols[1]; 
+            try {
+                const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+                clearTimeout(timeoutId); // Bağlandıysa sayacı durdur
+                
+                if (!response.ok) throw new Error("Http Error");
+                const dataText = await response.text();
+                
+                if(dataText.trim().startsWith("<") || dataText.length < 10) throw new Error("HTML Error");
 
-                    let lowerKey = key.toLowerCase();
-                    if (lowerKey.includes('ppf') && lowerKey.includes('ana')) {
-                        key = "ppfAnaPara"; 
-                    }
+                const rows = dataText.split('\n');
+                let incomingData = {}; 
+                
+                rows.forEach(row => {
+                    let cols = row.split(',');
+                    if(cols.length >= 2) {
+                        let key = cols[0].replace(/['"\r]+/g, '').trim();
+                        let value = cols[1]; 
 
-                    if (key.includes('ppfFiyat') || key.includes('Fiyat')) {
-                        if (cols.length > 2) {
-                             let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
-                             if (nextPart.length > 0) value = value + "." + nextPart; 
+                        let lowerKey = key.toLowerCase();
+                        if (lowerKey.includes('ppf') && lowerKey.includes('ana')) {
+                            key = "ppfAnaPara"; 
+                        }
+
+                        if (key.includes('ppfFiyat') || key.includes('Fiyat')) {
+                            if (cols.length > 2) {
+                                 let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
+                                 if (nextPart.length > 0) value = value + "." + nextPart; 
+                            }
+                        }
+                        else if (key.includes('GunlukYuzde')) {
+                            if (cols.length > 2) {
+                                 let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
+                                 if (nextPart.length > 0) value = value + "," + nextPart; 
+                            }
+                        }
+                        else {
+                            if (value && value.startsWith('"') && !value.endsWith('"') && cols.length > 2) value = value + "." + cols[2];
+                            else if (cols.length > 2) {
+                                 let nextCol = cols[2].replace(/['"\r]+/g, '').trim();
+                                 if (!isNaN(parseFloat(value)) && !isNaN(parseFloat(nextCol)) && nextCol.length <= 2) value = value + "." + nextCol;
+                            }
+                        }
+                        
+                        if(value) {
+                             value = value.replace(/['"\r]+/g, '').trim();
+                             incomingData[key] = value;
                         }
                     }
-                    else if (key.includes('GunlukYuzde')) {
-                        if (cols.length > 2) {
-                             let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
-                             if (nextPart.length > 0) value = value + "," + nextPart; 
-                        }
-                    }
-                    else {
-                        if (value && value.startsWith('"') && !value.endsWith('"') && cols.length > 2) value = value + "." + cols[2];
-                        else if (cols.length > 2) {
-                             let nextCol = cols[2].replace(/['"\r]+/g, '').trim();
-                             if (!isNaN(parseFloat(value)) && !isNaN(parseFloat(nextCol)) && nextCol.length <= 2) value = value + "." + nextCol;
-                        }
-                    }
-                    
-                    if(value) {
-                         value = value.replace(/['"\r]+/g, '').trim();
-                         incomingData[key] = value;
-                    }
+                });
+
+                let yeniFiyat = temizleVeSayiYap(incomingData['ppfFiyat']);
+                if (yeniFiyat > 0) {
+                    currentData.ppfFiyat = yeniFiyat; 
                 }
-            });
+                
+                let yeniYuzde = incomingData['ppfGunlukYuzde'];
+                if (yeniYuzde && !yeniYuzde.includes("Yükleniyor") && !yeniYuzde.includes("Loading") && !yeniYuzde.includes("Hata") && !yeniYuzde.includes("#N/A")) {
+                     currentData.ppfGunlukYuzde = yeniYuzde; 
+                }
 
-            // GÜNCELLEMELER
-            let yeniFiyat = temizleVeSayiYap(incomingData['ppfFiyat']);
-            if (yeniFiyat > 0) {
-                currentData.ppfFiyat = yeniFiyat; 
+                guncelleEgerSayi('ppfAdet', incomingData, currentData);
+                guncelleEgerSayi('ppfGunSayisi', incomingData, currentData);
+                guncelleEgerSayi('ppfAnaPara', incomingData, currentData);
+                guncelleEgerSayi('mevduatAnaPara', incomingData, currentData);
+                guncelleEgerSayi('mevduatGun', incomingData, currentData);
+                guncelleEgerSayi('mevduatFaiz', incomingData, currentData);
+                // 2. Mevduat Guncellemeleri
+                guncelleEgerSayi('mevduat2AnaPara', incomingData, currentData);
+                guncelleEgerSayi('mevduat2Gun', incomingData, currentData);
+                guncelleEgerSayi('mevduat2Faiz', incomingData, currentData);
+                
+                guncelleEgerSayi('altinGramAdet', incomingData, currentData);
+                guncelleEgerSayi('ceyrekAdet', incomingData, currentData);
+                guncelleEgerSayi('gramFiyat', incomingData, currentData);
+                guncelleEgerSayi('altinDeger', incomingData, currentData);
+                guncelleEgerSayi('altins1Adet', incomingData, currentData);
+                guncelleEgerSayi('altins1Fiyat', incomingData, currentData);
+                guncelleEgerSayi('hisseMaliyet', incomingData, currentData);
+                guncelleEgerSayi('hisseDeger', incomingData, currentData);
+                
+                guncelleEgerMetin('ppfFonKodu', incomingData, currentData);
+                guncelleEgerMetin('mevduatBaslangic', incomingData, currentData);
+                guncelleEgerMetin('mevduatBitis', incomingData, currentData);
+                // 2. Mevduat Tarih Guncellemeleri
+                guncelleEgerMetin('mevduat2Baslangic', incomingData, currentData);
+                guncelleEgerMetin('mevduat2Bitis', incomingData, currentData);
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
+                
+                document.getElementById('status-bar').innerText = "Veriler Başarıyla Güncellendi! ✅";
+                hesaplamalariYap(currentData);
+                grafigiCiz(currentData);
+                document.getElementById('chartBox').style.display = 'block';
+
+            } catch(e) {
+                clearTimeout(timeoutId); // Eğer hata verirse veya 4 sn dolarsa durdur.
+                throw e; // Hatayı 'baslat' fonksiyonuna fırlat ki sıradaki sunucuya geçsin.
             }
-            
-            let yeniYuzde = incomingData['ppfGunlukYuzde'];
-            if (yeniYuzde && !yeniYuzde.includes("Yükleniyor") && !yeniYuzde.includes("Loading") && !yeniYuzde.includes("Hata") && !yeniYuzde.includes("#N/A")) {
-                 currentData.ppfGunlukYuzde = yeniYuzde; 
-            }
-
-            guncelleEgerSayi('ppfAdet', incomingData, currentData);
-            guncelleEgerSayi('ppfGunSayisi', incomingData, currentData);
-            guncelleEgerSayi('ppfAnaPara', incomingData, currentData);
-            guncelleEgerSayi('mevduatAnaPara', incomingData, currentData);
-            guncelleEgerSayi('mevduatGun', incomingData, currentData);
-            guncelleEgerSayi('mevduatFaiz', incomingData, currentData);
-            guncelleEgerSayi('altinGramAdet', incomingData, currentData);
-            guncelleEgerSayi('ceyrekAdet', incomingData, currentData);
-            guncelleEgerSayi('gramFiyat', incomingData, currentData);
-            guncelleEgerSayi('altinDeger', incomingData, currentData);
-            guncelleEgerSayi('altins1Adet', incomingData, currentData);
-            guncelleEgerSayi('altins1Fiyat', incomingData, currentData);
-            guncelleEgerSayi('hisseMaliyet', incomingData, currentData);
-            guncelleEgerSayi('hisseDeger', incomingData, currentData);
-            
-            guncelleEgerMetin('ppfFonKodu', incomingData, currentData);
-            guncelleEgerMetin('mevduatBaslangic', incomingData, currentData);
-            guncelleEgerMetin('mevduatBitis', incomingData, currentData);
-
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
-            
-            document.getElementById('status-bar').innerText = "Veriler Başarıyla Güncellendi! ✅";
-            hesaplamalariYap(currentData);
-            grafigiCiz(currentData);
-            document.getElementById('chartBox').style.display = 'block';
         }
 
         function guncelleEgerSayi(key, source, target) {
@@ -337,36 +362,42 @@
             }
         }
 
-        // --- BU KISIM DÜZELTİLDİ: ESKİ SAĞLAM MANTIK ---
         function temizleVeSayiYap(deger) {
             if (!deger) return NaN;
             if (typeof deger === 'number') return deger;
-            // Harf kontrolü
             if (/[a-zA-Z]/.test(deger.replace("TL","").replace("tl",""))) {
                 return NaN; 
             }
             
             let temiz = deger.toString().replace(/['"\rTLtl₺]+/g, '').trim();
             
-            // Eğer virgül varsa (Türkçe format: 10.000,50 veya 0,30)
             if (temiz.includes(',')) {
-                // Binlik ayracı olan noktayı sil
                 temiz = temiz.replace(/\./g, '');
-                // Virgülü noktaya çevir (Programın anlaması için)
                 temiz = temiz.replace(',', '.');
             } 
-            // Eğer virgül yoksa (Düz sayı: 10000 veya 24.50 gibi US format)
-            // BURASI DÜZELTİLDİ: Noktayı silme!
-            // 24.50 -> 24.50 olarak kalmalı.
             
             let sayi = parseFloat(temiz);
             return sayi;
         }
 
         function hesaplamalariYap(data) {
+            // 1. Mevduat Hesaplamaları
             const mAna = data.mevduatAnaPara || 0;
             const mFaiz = data.mevduatFaiz || 0;
             const mGun = data.mevduatGun || 0;
+            let mBrut = (mAna * mFaiz * mGun) / 36500;
+            let mStopajTutar = mBrut * STOPAJ_ORANI;
+            let mNet = mBrut - mStopajTutar;
+            let mToplam = mAna + mNet;
+
+            // 2. Mevduat Hesaplamaları
+            const m2Ana = data.mevduat2AnaPara || 0;
+            const m2Faiz = data.mevduat2Faiz || 0;
+            const m2Gun = data.mevduat2Gun || 0;
+            let m2Brut = (m2Ana * m2Faiz * m2Gun) / 36500;
+            let m2StopajTutar = m2Brut * STOPAJ_ORANI;
+            let m2Net = m2Brut - m2StopajTutar;
+            let m2Toplam = m2Ana + m2Net;
             
             const pAna = data.ppfAnaPara || 0;
             const pAdet = data.ppfAdet || 0;
@@ -410,11 +441,6 @@
             
             const aToplamDeger = gramTotal + ceyrekTotal + s1Total;
 
-            let mBrut = (mAna * mFaiz * mGun) / 36500;
-            let mStopajTutar = mBrut * STOPAJ_ORANI;
-            let mNet = mBrut - mStopajTutar;
-            let mToplam = mAna + mNet;
-
             let pHamKar = pGuncel - pAna;
             let pStopajTutar = 0;
             if (pHamKar > 0) { pStopajTutar = pHamKar * STOPAJ_ORANI; }
@@ -425,6 +451,7 @@
             let hYuzde = 0;
             if (hMaliyet > 0) { hYuzde = (hKar / hMaliyet) * 100; }
 
+            // 1. Mevduat Ekran Çıktıları
             document.getElementById('mevduatBas').innerText = data.mevduatBaslangic;
             document.getElementById('mevduatBit').innerText = data.mevduatBitis;
             document.getElementById('mevduatAnaPara').innerText = formatMoney(mAna);
@@ -434,6 +461,17 @@
             document.getElementById('mevduatStopaj').innerText = "-" + formatMoney(mStopajTutar);
             document.getElementById('mevduatGetiri').innerText = "+" + formatMoney(mNet);
             document.getElementById('mevduatToplam').innerText = formatMoney(mToplam);
+
+            // 2. Mevduat Ekran Çıktıları
+            document.getElementById('mevduat2Bas').innerText = data.mevduat2Baslangic;
+            document.getElementById('mevduat2Bit').innerText = data.mevduat2Bitis;
+            document.getElementById('mevduat2AnaPara').innerText = formatMoney(m2Ana);
+            document.getElementById('mevduat2Faiz').innerText = "%" + m2Faiz;
+            document.getElementById('mevduat2Gun').innerText = m2Gun;
+            document.getElementById('mevduat2Brut').innerText = formatMoney(m2Brut);
+            document.getElementById('mevduat2Stopaj').innerText = "-" + formatMoney(m2StopajTutar);
+            document.getElementById('mevduat2Getiri').innerText = "+" + formatMoney(m2Net);
+            document.getElementById('mevduat2Toplam').innerText = formatMoney(m2Toplam);
 
             document.getElementById('ppfFonKodu').innerText = data.ppfFonKodu;
             document.getElementById('ppfAdet').innerText = pAdet.toLocaleString('tr-TR');
@@ -471,12 +509,15 @@
             document.getElementById('displayS1Fiyat').innerText = formatMoney(s1Fiyat);
             document.getElementById('displayAltinToplam').innerText = formatMoney(aToplamDeger);
 
-            let grandTotalCurrent = mAna + pNetEleGecen + hDeger + aToplamDeger;
+            // Genel Toplamlara 2. Mevduatı da dahil ettik
+            let grandTotalCurrent = mAna + m2Ana + pNetEleGecen + hDeger + aToplamDeger;
             document.getElementById('grandTotalCurrent').innerText = formatMoney(grandTotalCurrent);
-            let grandTotalFuture = mToplam + pNetEleGecen + hDeger + aToplamDeger;
+            
+            let grandTotalFuture = mToplam + m2Toplam + pNetEleGecen + hDeger + aToplamDeger;
             document.getElementById('grandTotalFuture').innerText = formatMoney(grandTotalFuture);
             
-            data.mToplam = mToplam;
+            // Grafikte Mevduat dilimi ikisinin toplamını yansıtacak
+            data.mToplam = mToplam + m2Toplam;
             data.pNet = pNetEleGecen;
             data.hDeger = hDeger;
             data.aDeger = aToplamDeger;
@@ -491,7 +532,7 @@
                 type: 'doughnut',
                 plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
                 data: {
-                    labels: ['Mevduat', 'PPF Fon', 'Hisse', 'Altın'],
+                    labels: ['Mevduat Toplam', 'PPF Fon', 'Hisse', 'Altın'],
                     datasets: [{
                         data: [data.mToplam, data.pNet, data.hDeger, data.aDeger],
                         backgroundColor: colors,

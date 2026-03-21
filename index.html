@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yatırım Takip V8.9.1 (Hızlı Geçiş Fix)</title>
+    <title>Yatırım Takip V8.9.2 (Pasta Grafik Fix)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -175,7 +175,7 @@
     <script>
         const MY_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQueJNj94CLqPJG2GTGDq9MNqOHrlJA7RQGOMhONe04rScE6tqCDkKKEy729Q6Fka4sDVBtj5EAk7lC/pub?gid=0&single=true&output=csv";
         const STOPAJ_ORANI = 0.175; 
-        const STORAGE_KEY = "YatirimTakip_V8_9_1"; 
+        const STORAGE_KEY = "YatirimTakip_V8_9_2"; 
         
         let currentData = {
             mevduatAnaPara: 0, mevduatFaiz: 0, mevduatGun: 0, mevduatBaslangic: "-", mevduatBitis: "-",
@@ -212,20 +212,14 @@
             location.reload();
         }
 
-        function formatMoney(amount) {
-            if (isNaN(amount) || amount === null) return "0,00 ₺";
-            return parseFloat(amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
-        }
-
         async function baslat() {
             const randomTime = "&nocache=" + new Date().getTime(); 
             const targetUrl = encodeURIComponent(MY_SHEET_URL + randomTime);
 
-            // Sunucuları hıza göre dizdik
             const proxies = [
-                "https://corsproxy.io/?",
+                "https://api.allorigins.win/raw?url=",
                 "https://api.codetabs.com/v1/proxy?quest=",
-                "https://api.allorigins.win/raw?url="
+                "https://corsproxy.io/?"
             ];
 
             for (let i = 0; i < proxies.length; i++) {
@@ -234,8 +228,8 @@
                     await verileriGetir(proxies[i] + targetUrl);
                     return; 
                 } catch (e) {
-                    console.log(`Hat ${i+1} başarısız veya çok yavaş. Diğerine geçiliyor...`);
-                    // Beklemeden direkt diğerine geçer (Hata aldıysa)
+                    console.log(`Hat ${i+1} başarısız. Diğerine geçiliyor...`);
+                    await new Promise(r => setTimeout(r, 1000)); 
                 }
             }
 
@@ -243,14 +237,13 @@
             setTimeout(() => baslat(), 5000); 
         }
 
-        // --- ZAMAN AŞIMI (TIMEOUT) EKLENMİŞ VERİ ÇEKME MOTORU ---
         async function verileriGetir(url) {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 saniye süre tanıdık!
+            const timeoutId = setTimeout(() => controller.abort(), 4000); 
 
             try {
                 const response = await fetch(url, { cache: "no-store", signal: controller.signal });
-                clearTimeout(timeoutId); // Bağlandıysa sayacı durdur
+                clearTimeout(timeoutId); 
                 
                 if (!response.ok) throw new Error("Http Error");
                 const dataText = await response.text();
@@ -314,7 +307,6 @@
                 guncelleEgerSayi('mevduatAnaPara', incomingData, currentData);
                 guncelleEgerSayi('mevduatGun', incomingData, currentData);
                 guncelleEgerSayi('mevduatFaiz', incomingData, currentData);
-                // 2. Mevduat Guncellemeleri
                 guncelleEgerSayi('mevduat2AnaPara', incomingData, currentData);
                 guncelleEgerSayi('mevduat2Gun', incomingData, currentData);
                 guncelleEgerSayi('mevduat2Faiz', incomingData, currentData);
@@ -331,7 +323,6 @@
                 guncelleEgerMetin('ppfFonKodu', incomingData, currentData);
                 guncelleEgerMetin('mevduatBaslangic', incomingData, currentData);
                 guncelleEgerMetin('mevduatBitis', incomingData, currentData);
-                // 2. Mevduat Tarih Guncellemeleri
                 guncelleEgerMetin('mevduat2Baslangic', incomingData, currentData);
                 guncelleEgerMetin('mevduat2Bitis', incomingData, currentData);
 
@@ -343,9 +334,14 @@
                 document.getElementById('chartBox').style.display = 'block';
 
             } catch(e) {
-                clearTimeout(timeoutId); // Eğer hata verirse veya 4 sn dolarsa durdur.
-                throw e; // Hatayı 'baslat' fonksiyonuna fırlat ki sıradaki sunucuya geçsin.
+                clearTimeout(timeoutId); 
+                throw e; 
             }
+        }
+
+        function formatMoney(amount) {
+            if (isNaN(amount) || amount === null) return "0,00 ₺";
+            return parseFloat(amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
         }
 
         function guncelleEgerSayi(key, source, target) {
@@ -381,7 +377,6 @@
         }
 
         function hesaplamalariYap(data) {
-            // 1. Mevduat Hesaplamaları
             const mAna = data.mevduatAnaPara || 0;
             const mFaiz = data.mevduatFaiz || 0;
             const mGun = data.mevduatGun || 0;
@@ -390,7 +385,6 @@
             let mNet = mBrut - mStopajTutar;
             let mToplam = mAna + mNet;
 
-            // 2. Mevduat Hesaplamaları
             const m2Ana = data.mevduat2AnaPara || 0;
             const m2Faiz = data.mevduat2Faiz || 0;
             const m2Gun = data.mevduat2Gun || 0;
@@ -451,7 +445,6 @@
             let hYuzde = 0;
             if (hMaliyet > 0) { hYuzde = (hKar / hMaliyet) * 100; }
 
-            // 1. Mevduat Ekran Çıktıları
             document.getElementById('mevduatBas').innerText = data.mevduatBaslangic;
             document.getElementById('mevduatBit').innerText = data.mevduatBitis;
             document.getElementById('mevduatAnaPara').innerText = formatMoney(mAna);
@@ -462,7 +455,6 @@
             document.getElementById('mevduatGetiri').innerText = "+" + formatMoney(mNet);
             document.getElementById('mevduatToplam').innerText = formatMoney(mToplam);
 
-            // 2. Mevduat Ekran Çıktıları
             document.getElementById('mevduat2Bas').innerText = data.mevduat2Baslangic;
             document.getElementById('mevduat2Bit').innerText = data.mevduat2Bitis;
             document.getElementById('mevduat2AnaPara').innerText = formatMoney(m2Ana);
@@ -509,32 +501,38 @@
             document.getElementById('displayS1Fiyat').innerText = formatMoney(s1Fiyat);
             document.getElementById('displayAltinToplam').innerText = formatMoney(aToplamDeger);
 
-            // Genel Toplamlara 2. Mevduatı da dahil ettik
             let grandTotalCurrent = mAna + m2Ana + pNetEleGecen + hDeger + aToplamDeger;
             document.getElementById('grandTotalCurrent').innerText = formatMoney(grandTotalCurrent);
             
             let grandTotalFuture = mToplam + m2Toplam + pNetEleGecen + hDeger + aToplamDeger;
             document.getElementById('grandTotalFuture').innerText = formatMoney(grandTotalFuture);
             
-            // Grafikte Mevduat dilimi ikisinin toplamını yansıtacak
+            // Grafik için verileri data objesine kaydet
             data.mToplam = mToplam + m2Toplam;
             data.pNet = pNetEleGecen;
             data.hDeger = hDeger;
             data.aDeger = aToplamDeger;
         }
 
+        // --- DEĞİŞEN TEK YER BURASI: GRAFİK ÇİZİMİ ---
         function grafigiCiz(data) {
             if (typeof Chart === 'undefined') return;
             const ctx = document.getElementById('varlikGrafigi').getContext('2d');
             if (chartInstance) { chartInstance.destroy(); }
-            const colors = ['#bb86fc', '#03dac6', '#cf6679', '#ffd700']; 
+            
+            // PPF Rengini sildik, sadece 3 renk bıraktık.
+            // bb86fc = Mevduat/Faiz Rengi, cf6679 = Hisse Rengi, ffd700 = Altın Rengi
+            const colors = ['#bb86fc', '#cf6679', '#ffd700']; 
+            
             chartInstance = new Chart(ctx, {
                 type: 'doughnut',
                 plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
                 data: {
-                    labels: ['Mevduat Toplam', 'PPF Fon', 'Hisse', 'Altın'],
+                    // Dilim isimlerini 3'e düşürdük
+                    labels: ['Mevduat & PPF', 'Hisse', 'Altın'],
                     datasets: [{
-                        data: [data.mToplam, data.pNet, data.hDeger, data.aDeger],
+                        // Mevduat Toplamları ile PPF Toplamını (+ data.pNet) birleştirdik
+                        data: [data.mToplam + data.pNet, data.hDeger, data.aDeger],
                         backgroundColor: colors,
                         borderColor: '#121212',
                         borderWidth: 2,

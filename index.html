@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Yatırım Takip V8.9.2 (Pasta Grafik Fix)</title>
+    <title>Yatırım Takip V10.0 (Aracısız Son Nokta)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -175,7 +175,7 @@
     <script>
         const MY_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQueJNj94CLqPJG2GTGDq9MNqOHrlJA7RQGOMhONe04rScE6tqCDkKKEy729Q6Fka4sDVBtj5EAk7lC/pub?gid=0&single=true&output=csv";
         const STOPAJ_ORANI = 0.175; 
-        const STORAGE_KEY = "YatirimTakip_V8_9_2"; 
+        const STORAGE_KEY = "YatirimTakip_V10_0"; 
         
         let currentData = {
             mevduatAnaPara: 0, mevduatFaiz: 0, mevduatGun: 0, mevduatBaslangic: "-", mevduatBitis: "-",
@@ -212,131 +212,118 @@
             location.reload();
         }
 
+        // --- ARACILAR TAMAMEN KALDIRILDI, DOĞRUDAN GOOGLE BAĞLANTISI ---
         async function baslat() {
-            const randomTime = "&nocache=" + new Date().getTime(); 
-            const targetUrl = encodeURIComponent(MY_SHEET_URL + randomTime);
-
-            const proxies = [
-                "https://api.allorigins.win/raw?url=",
-                "https://api.codetabs.com/v1/proxy?quest=",
-                "https://corsproxy.io/?"
-            ];
-
-            for (let i = 0; i < proxies.length; i++) {
-                try {
-                    document.getElementById('status-bar').innerText = `Sunucu aranıyor (Hat ${i+1})...`;
-                    await verileriGetir(proxies[i] + targetUrl);
-                    return; 
-                } catch (e) {
-                    console.log(`Hat ${i+1} başarısız. Diğerine geçiliyor...`);
-                    await new Promise(r => setTimeout(r, 1000)); 
-                }
+            try {
+                document.getElementById('status-bar').innerText = "Aracısız: Google Tablolara doğrudan bağlanılıyor...";
+                await verileriGetir(MY_SHEET_URL);
+            } catch (e) {
+                console.log("Bağlantı hatası: ", e);
+                document.getElementById('status-bar').innerText = "Ağ bekleniyor... Son veriler gösteriliyor (5 sn). Hata: " + e.message;
+                setTimeout(() => baslat(), 5000); 
             }
-
-            document.getElementById('status-bar').innerText = "Ağ yoğun. Son veriler gösteriliyor (5 sn sonra tekrar denenecek).";
-            setTimeout(() => baslat(), 5000); 
         }
 
         async function verileriGetir(url) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 4000); 
+            // Cüzdan uygulamasını çökertebilecek "AbortController" yerine basit bir bayrak (flag) kullanıldı.
+            let timeoutOldu = false;
+            const timer = setTimeout(function() { timeoutOldu = true; }, 10000); // 10 saniye tolerans
 
-            try {
-                const response = await fetch(url, { cache: "no-store", signal: controller.signal });
-                clearTimeout(timeoutId); 
-                
-                if (!response.ok) throw new Error("Http Error");
-                const dataText = await response.text();
-                
-                if(dataText.trim().startsWith("<") || dataText.length < 10) throw new Error("HTML Error");
+            // Linkin sonuna eklediğimiz saçma parametreleri sildik. URL tamamen saf ve bozulmamış halde.
+            // Önbelleği (cache) doğrudan tarayıcının kendi komutuyla kırıyoruz.
+            const response = await fetch(url, { method: 'GET', cache: "no-store" });
+            
+            clearTimeout(timer);
+            
+            if (timeoutOldu) throw new Error("Zaman aşımı");
+            if (!response.ok) throw new Error("Google sunucusu yanıt vermedi");
+            
+            const dataText = await response.text();
+            
+            if(dataText.trim().startsWith("<") || dataText.length < 10) throw new Error("Geçersiz veya boş veri");
 
-                const rows = dataText.split('\n');
-                let incomingData = {}; 
-                
-                rows.forEach(row => {
-                    let cols = row.split(',');
-                    if(cols.length >= 2) {
-                        let key = cols[0].replace(/['"\r]+/g, '').trim();
-                        let value = cols[1]; 
+            const rows = dataText.split('\n');
+            let incomingData = {}; 
+            
+            rows.forEach(row => {
+                let cols = row.split(',');
+                if(cols.length >= 2) {
+                    let key = cols[0].replace(/['"\r]+/g, '').trim();
+                    let value = cols[1]; 
 
-                        let lowerKey = key.toLowerCase();
-                        if (lowerKey.includes('ppf') && lowerKey.includes('ana')) {
-                            key = "ppfAnaPara"; 
-                        }
+                    let lowerKey = key.toLowerCase();
+                    if (lowerKey.includes('ppf') && lowerKey.includes('ana')) {
+                        key = "ppfAnaPara"; 
+                    }
 
-                        if (key.includes('ppfFiyat') || key.includes('Fiyat')) {
-                            if (cols.length > 2) {
-                                 let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
-                                 if (nextPart.length > 0) value = value + "." + nextPart; 
-                            }
-                        }
-                        else if (key.includes('GunlukYuzde')) {
-                            if (cols.length > 2) {
-                                 let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
-                                 if (nextPart.length > 0) value = value + "," + nextPart; 
-                            }
-                        }
-                        else {
-                            if (value && value.startsWith('"') && !value.endsWith('"') && cols.length > 2) value = value + "." + cols[2];
-                            else if (cols.length > 2) {
-                                 let nextCol = cols[2].replace(/['"\r]+/g, '').trim();
-                                 if (!isNaN(parseFloat(value)) && !isNaN(parseFloat(nextCol)) && nextCol.length <= 2) value = value + "." + nextCol;
-                            }
-                        }
-                        
-                        if(value) {
-                             value = value.replace(/['"\r]+/g, '').trim();
-                             incomingData[key] = value;
+                    if (key.includes('ppfFiyat') || key.includes('Fiyat')) {
+                        if (cols.length > 2) {
+                             let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (nextPart.length > 0) value = value + "." + nextPart; 
                         }
                     }
-                });
-
-                let yeniFiyat = temizleVeSayiYap(incomingData['ppfFiyat']);
-                if (yeniFiyat > 0) {
-                    currentData.ppfFiyat = yeniFiyat; 
+                    else if (key.includes('GunlukYuzde')) {
+                        if (cols.length > 2) {
+                             let nextPart = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (nextPart.length > 0) value = value + "," + nextPart; 
+                        }
+                    }
+                    else {
+                        if (value && value.startsWith('"') && !value.endsWith('"') && cols.length > 2) value = value + "." + cols[2];
+                        else if (cols.length > 2) {
+                             let nextCol = cols[2].replace(/['"\r]+/g, '').trim();
+                             if (!isNaN(parseFloat(value)) && !isNaN(parseFloat(nextCol)) && nextCol.length <= 2) value = value + "." + nextCol;
+                        }
+                    }
+                    
+                    if(value) {
+                         value = value.replace(/['"\r]+/g, '').trim();
+                         incomingData[key] = value;
+                    }
                 }
-                
-                let yeniYuzde = incomingData['ppfGunlukYuzde'];
-                if (yeniYuzde && !yeniYuzde.includes("Yükleniyor") && !yeniYuzde.includes("Loading") && !yeniYuzde.includes("Hata") && !yeniYuzde.includes("#N/A")) {
-                     currentData.ppfGunlukYuzde = yeniYuzde; 
-                }
+            });
 
-                guncelleEgerSayi('ppfAdet', incomingData, currentData);
-                guncelleEgerSayi('ppfGunSayisi', incomingData, currentData);
-                guncelleEgerSayi('ppfAnaPara', incomingData, currentData);
-                guncelleEgerSayi('mevduatAnaPara', incomingData, currentData);
-                guncelleEgerSayi('mevduatGun', incomingData, currentData);
-                guncelleEgerSayi('mevduatFaiz', incomingData, currentData);
-                guncelleEgerSayi('mevduat2AnaPara', incomingData, currentData);
-                guncelleEgerSayi('mevduat2Gun', incomingData, currentData);
-                guncelleEgerSayi('mevduat2Faiz', incomingData, currentData);
-                
-                guncelleEgerSayi('altinGramAdet', incomingData, currentData);
-                guncelleEgerSayi('ceyrekAdet', incomingData, currentData);
-                guncelleEgerSayi('gramFiyat', incomingData, currentData);
-                guncelleEgerSayi('altinDeger', incomingData, currentData);
-                guncelleEgerSayi('altins1Adet', incomingData, currentData);
-                guncelleEgerSayi('altins1Fiyat', incomingData, currentData);
-                guncelleEgerSayi('hisseMaliyet', incomingData, currentData);
-                guncelleEgerSayi('hisseDeger', incomingData, currentData);
-                
-                guncelleEgerMetin('ppfFonKodu', incomingData, currentData);
-                guncelleEgerMetin('mevduatBaslangic', incomingData, currentData);
-                guncelleEgerMetin('mevduatBitis', incomingData, currentData);
-                guncelleEgerMetin('mevduat2Baslangic', incomingData, currentData);
-                guncelleEgerMetin('mevduat2Bitis', incomingData, currentData);
-
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
-                
-                document.getElementById('status-bar').innerText = "Veriler Başarıyla Güncellendi! ✅";
-                hesaplamalariYap(currentData);
-                grafigiCiz(currentData);
-                document.getElementById('chartBox').style.display = 'block';
-
-            } catch(e) {
-                clearTimeout(timeoutId); 
-                throw e; 
+            let yeniFiyat = temizleVeSayiYap(incomingData['ppfFiyat']);
+            if (yeniFiyat > 0) {
+                currentData.ppfFiyat = yeniFiyat; 
             }
+            
+            let yeniYuzde = incomingData['ppfGunlukYuzde'];
+            if (yeniYuzde && !yeniYuzde.includes("Yükleniyor") && !yeniYuzde.includes("Loading") && !yeniYuzde.includes("Hata") && !yeniYuzde.includes("#N/A")) {
+                 currentData.ppfGunlukYuzde = yeniYuzde; 
+            }
+
+            guncelleEgerSayi('ppfAdet', incomingData, currentData);
+            guncelleEgerSayi('ppfGunSayisi', incomingData, currentData);
+            guncelleEgerSayi('ppfAnaPara', incomingData, currentData);
+            guncelleEgerSayi('mevduatAnaPara', incomingData, currentData);
+            guncelleEgerSayi('mevduatGun', incomingData, currentData);
+            guncelleEgerSayi('mevduatFaiz', incomingData, currentData);
+            guncelleEgerSayi('mevduat2AnaPara', incomingData, currentData);
+            guncelleEgerSayi('mevduat2Gun', incomingData, currentData);
+            guncelleEgerSayi('mevduat2Faiz', incomingData, currentData);
+            
+            guncelleEgerSayi('altinGramAdet', incomingData, currentData);
+            guncelleEgerSayi('ceyrekAdet', incomingData, currentData);
+            guncelleEgerSayi('gramFiyat', incomingData, currentData);
+            guncelleEgerSayi('altinDeger', incomingData, currentData);
+            guncelleEgerSayi('altins1Adet', incomingData, currentData);
+            guncelleEgerSayi('altins1Fiyat', incomingData, currentData);
+            guncelleEgerSayi('hisseMaliyet', incomingData, currentData);
+            guncelleEgerSayi('hisseDeger', incomingData, currentData);
+            
+            guncelleEgerMetin('ppfFonKodu', incomingData, currentData);
+            guncelleEgerMetin('mevduatBaslangic', incomingData, currentData);
+            guncelleEgerMetin('mevduatBitis', incomingData, currentData);
+            guncelleEgerMetin('mevduat2Baslangic', incomingData, currentData);
+            guncelleEgerMetin('mevduat2Bitis', incomingData, currentData);
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
+            
+            document.getElementById('status-bar').innerText = "Veriler Başarıyla Güncellendi! ✅";
+            hesaplamalariYap(currentData);
+            grafigiCiz(currentData);
+            document.getElementById('chartBox').style.display = 'block';
         }
 
         function formatMoney(amount) {
@@ -507,31 +494,25 @@
             let grandTotalFuture = mToplam + m2Toplam + pNetEleGecen + hDeger + aToplamDeger;
             document.getElementById('grandTotalFuture').innerText = formatMoney(grandTotalFuture);
             
-            // Grafik için verileri data objesine kaydet
             data.mToplam = mToplam + m2Toplam;
             data.pNet = pNetEleGecen;
             data.hDeger = hDeger;
             data.aDeger = aToplamDeger;
         }
 
-        // --- DEĞİŞEN TEK YER BURASI: GRAFİK ÇİZİMİ ---
         function grafigiCiz(data) {
             if (typeof Chart === 'undefined') return;
             const ctx = document.getElementById('varlikGrafigi').getContext('2d');
             if (chartInstance) { chartInstance.destroy(); }
             
-            // PPF Rengini sildik, sadece 3 renk bıraktık.
-            // bb86fc = Mevduat/Faiz Rengi, cf6679 = Hisse Rengi, ffd700 = Altın Rengi
             const colors = ['#bb86fc', '#cf6679', '#ffd700']; 
             
             chartInstance = new Chart(ctx, {
                 type: 'doughnut',
                 plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
                 data: {
-                    // Dilim isimlerini 3'e düşürdük
                     labels: ['Mevduat & PPF', 'Hisse', 'Altın'],
                     datasets: [{
-                        // Mevduat Toplamları ile PPF Toplamını (+ data.pNet) birleştirdik
                         data: [data.mToplam + data.pNet, data.hDeger, data.aDeger],
                         backgroundColor: colors,
                         borderColor: '#121212',
